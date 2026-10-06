@@ -108,7 +108,11 @@ public class UserIdMap {
     
     public synchronized static void initUser(String currentUserId) {
         setCurrentUserId(currentUserId);
-        ApplicationHook.getMainHandler().post(() -> {
+        android.os.Handler handler = ApplicationHook.getMainHandler();
+        if (handler == null) {
+            handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        }
+        handler.post(() -> {
             ClassLoader loader;
             try {
                 loader = ApplicationHook.getClassLoader();

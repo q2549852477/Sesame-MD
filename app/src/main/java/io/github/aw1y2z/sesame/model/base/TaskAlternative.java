@@ -30,7 +30,8 @@ public final class TaskAlternative {
      */
     private static final String[] TRANSACTION_BIZ_KEYWORDS = {
             "xiadan", "zhifu", "pay", "goumai", "jiaofei", "huankuan", "chongzhi",
-            "taobao", "babafarm_tb", "70000"
+            "taobao", "babafarm_tb", "70000",
+            "daodianpay", "daodian"
     };
 
     /** bizKey 是否属于交易/履约类（下单、支付、购买、缴费、还款、充值、淘宝）。 */

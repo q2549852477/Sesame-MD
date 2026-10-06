@@ -1689,7 +1689,7 @@ public class AntFarm extends ModelTask {
             String title = task.getString("title");
             String bizKey = task.getString("bizKey");
             String taskId = task.optString("taskId");
-            if (bizKey.contains("HEART_DONAT") || bizKey.equals("BAIDUJS_202512") || bizKey.equals("BABAFARM_TB")) {
+            if (bizKey.contains("HEART_DONAT") || bizKey.equals("BAIDUJS_202512")) {
                 return false;
             }
             // 按稳定 taskId 分派（2026-09-22 抓包实测）：
