@@ -105,7 +105,7 @@ public class TaobaoFarm extends Model {
         try {
             JSONObject jo = new JSONObject(res);
             JSONArray taskArray = jo.optJSONArray("taskList");
-            if (taskArray == null || taskArray.isEmpty()) {
+            if (taskArray == null || taskArray.length() == 0) {
                 Log.farm("淘宝农场📋没有可用任务");
                 return;
             }

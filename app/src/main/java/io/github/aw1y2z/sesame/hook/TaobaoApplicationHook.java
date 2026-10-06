@@ -61,7 +61,7 @@ public class TaobaoApplicationHook {
             hookMtop(lpparam.classLoader);
             hooked = true;
         } catch (Throwable t) {
-            Log.printStackTrace(TAG, "hookMtop err:", t);
+            Log.printStackTrace(TAG, t);
         }
     }
 
@@ -175,14 +175,14 @@ public class TaobaoApplicationHook {
                 return null;
             }
             if (errorRef.get() != null) {
-                Log.printStackTrace(TAG, "MTOP err:", errorRef.get());
+                Log.printStackTrace(TAG, errorRef.get());
                 return null;
             }
             String result = resultRef.get();
             Log.debug("Taobao MTOP\nAPI: " + apiName + "\nParams: " + params + "\nData: " + result);
             return result;
         } catch (Throwable t) {
-            Log.printStackTrace(TAG, "requestString err:", t);
+            Log.printStackTrace(TAG, t);
             return null;
         }
     }
