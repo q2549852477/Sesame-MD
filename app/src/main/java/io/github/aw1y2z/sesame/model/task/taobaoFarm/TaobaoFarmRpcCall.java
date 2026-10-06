@@ -2,20 +2,16 @@ package io.github.aw1y2z.sesame.model.task.taobaoFarm;
 
 import io.github.aw1y2z.sesame.hook.TaobaoApplicationHook;
 
-/**
- * 淘宝芭芭农场（天猫农场）MTOP API 调用封装。
- * 接口前缀: mtop.tmall.farm.*
- */
 public class TaobaoFarmRpcCall {
 
     private static final String V = "1.0";
 
-    /** 获取农场主页信息（果树状态、进度、任务列表等） */
+    /** 获取农场主页（果树状态、任务列表、奖励等） */
     public static String mainGet() {
         return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.main.get", V, "{}");
     }
 
-    /** 获取额外信息（任务详情、活动列表等） */
+    /** 获取额外数据（活动、礼包、问答等） */
     public static String extraGet() {
         return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.extra.get", V, "{}");
     }
@@ -30,13 +26,7 @@ public class TaobaoFarmRpcCall {
         return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.plant.openbox", V, "{}");
     }
 
-    /** 收菜/收获 */
-    public static String harvest(String orchardId) {
-        return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.plant.harvest", V,
-                "{\"orchardId\":\"" + orchardId + "\"}");
-    }
-
-    /** 用户农场主信息 */
+    /** 用户农场信息 */
     public static String userMainFarm() {
         return TaobaoApplicationHook.requestString("mtop.tmall.jiuxi.activity.farm.user.getmainfarm", V, "{}");
     }
@@ -47,20 +37,31 @@ public class TaobaoFarmRpcCall {
                 "{\"energyId\":\"" + energyId + "\"}");
     }
 
-    /** 任务列表 */
-    public static String taskList() {
-        return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.task.list", V, "{}");
-    }
-
-    /** 执行任务 */
-    public static String doTask(String taskId, String taskType) {
+    /** 执行任务（浏览/点击/搜索等） */
+    public static String doTask(String taskId) {
         return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.task.do", V,
-                "{\"taskId\":\"" + taskId + "\",\"taskType\":\"" + taskType + "\"}");
+                "{\"taskId\":\"" + taskId + "\"}");
     }
 
     /** 领取任务奖励 */
     public static String taskReceive(String taskId) {
         return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.task.receive", V,
                 "{\"taskId\":\"" + taskId + "\"}");
+    }
+
+    /** 领取肥料礼包 */
+    public static String receiveGift() {
+        return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.gift.receive", V, "{}");
+    }
+
+    /** 问答 - 获取题目 */
+    public static String quizGet() {
+        return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.quiz.get", V, "{}");
+    }
+
+    /** 问答 - 提交答案 */
+    public static String quizSubmit(String questionId, String answer) {
+        return TaobaoApplicationHook.requestString("mtop.tmall.farm.orchard.quiz.submit", V,
+                "{\"questionId\":\"" + questionId + "\",\"answer\":\"" + answer + "\"}");
     }
 }
