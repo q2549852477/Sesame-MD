@@ -586,28 +586,52 @@ public class TaobaoApplicationHook {
 
     private static Object getMtopInstance() {
         if (mtopClassRef == null) return null;
+        // 优先用「登录态」实例：遍历 Mtop 静态注册表，找 sid 非空的那个
+        // （实测 MTOP_ID_TAOBAO 是空实例，真正带 sid 的是 INNER）
+        Object logged = findLoggedInInstance();
+        if (logged != null) return logged;
+        // 兜底：按 instanceId 取
         if (context != null) {
-            // Mtop.instance(String instanceId, Context) — 淘宝主实例
-            try {
-                return mtopClassRef.getMethod("instance", String.class, Context.class)
-                        .invoke(null, "MTOP_ID_TAOBAO", context);
-            } catch (Throwable ignored) {
+            for (String id : new String[]{"INNER", "MTOP_ID_TAOBAO"}) {
+                try {
+                    Object o = mtopClassRef.getMethod("instance", String.class, Context.class)
+                            .invoke(null, id, context);
+                    if (o != null) return o;
+                } catch (Throwable ignored) {}
             }
-            // Mtop.instance(Context) — 默认实例
             try {
                 return mtopClassRef.getMethod("instance", Context.class).invoke(null, context);
-            } catch (Throwable ignored) {
-            }
-            // Mtop.getInstance(String)
+            } catch (Throwable ignored) {}
+        }
+        for (String id : new String[]{"INNER", "MTOP_ID_TAOBAO"}) {
             try {
-                return mtopClassRef.getMethod("getInstance", String.class).invoke(null, "MTOP_ID_TAOBAO");
-            } catch (Throwable ignored) {
-            }
+                Object o = mtopClassRef.getMethod("getInstance", String.class).invoke(null, id);
+                if (o != null) return o;
+            } catch (Throwable ignored) {}
         }
+        return null;
+    }
+
+    /** 遍历 Mtop 静态 Map，返回 sid 非空的登录实例；找不到返回 null */
+    private static Object findLoggedInInstance() {
         try {
-            return mtopClassRef.getMethod("getInstance", String.class).invoke(null, "MTOP_ID_TAOBAO");
-        } catch (Throwable ignored) {
-        }
+            for (java.lang.reflect.Field sf : mtopClassRef.getDeclaredFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(sf.getModifiers())) continue;
+                sf.setAccessible(true);
+                Object val = sf.get(null);
+                if (!(val instanceof java.util.Map)) continue;
+                for (Object eObj : ((java.util.Map<?, ?>) val).values()) {
+                    if (eObj == null) continue;
+                    try {
+                        Object sid = eObj.getClass().getMethod("getSid").invoke(eObj);
+                        if (sid != null && !String.valueOf(sid).isEmpty()
+                                && !"null".equals(String.valueOf(sid))) {
+                            return eObj;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 }
