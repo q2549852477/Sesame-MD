@@ -446,15 +446,9 @@ public class TaobaoApplicationHook {
             } catch (Throwable ignored) {}
             android.util.Log.i(TAG, "MTOP " + apiName + " retCode=" + retCode
                     + " data=" + (dataStr != null ? dataStr.substring(0, Math.min(200, dataStr.length())) : "null"));
-            // 临时：把 main.get 完整响应写到共享文件，便于离线分析 openbox/gift 参数
-            if (apiName != null && apiName.contains("main.get")) {
-                try {
-                    java.io.File dump = new java.io.File("/data/local/tmp/sesame_tb_mainget.json");
-                    try (java.io.FileWriter fw = new java.io.FileWriter(dump)) {
-                        fw.write(dataStr != null ? dataStr : "null");
-                    }
-                    android.util.Log.i(TAG, "main.get dumped, len=" + (dataStr != null ? dataStr.length() : 0));
-                } catch (Throwable ignored) {}
+            // 临时：分块打印 main.get 完整响应（logcat 会对超长行自动续行），便于离线分析 openbox/gift 参数
+            if (apiName != null && apiName.contains("main.get") && dataStr != null) {
+                android.util.Log.i(TAG, "MAINGET_FULL len=" + dataStr.length() + "\n" + dataStr);
             }
             return dataStr;
         } catch (Throwable t) {
