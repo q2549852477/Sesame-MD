@@ -416,6 +416,8 @@ public class TaobaoApplicationHook {
             Class<?> mtopBuilderClass = classLoader.loadClass("mtopsdk.mtop.intf.MtopBuilder");
             Method buildMethod = mtopInstance.getClass().getMethod("build", reqClass, String.class);
             Object builder = buildMethod.invoke(mtopInstance, req, version);
+            android.util.Log.i(TAG, "MTOP debug: mtopInstance=" + mtopInstance.getClass().getName()
+                    + " builder=" + (builder != null ? builder.getClass().getName() : "null") + " for " + apiName);
 
             Class<?> mtopListenerClass = classLoader.loadClass("mtopsdk.mtop.common.MtopListener");
 
@@ -423,6 +425,7 @@ public class TaobaoApplicationHook {
                     classLoader, new Class<?>[]{mtopListenerClass},
                     (proxyObj, method, args) -> {
                         String mn = method.getName();
+                        android.util.Log.i(TAG, "MTOP listener cb: " + mn + " (" + apiName + ")");
                         if ("onSuccess".equals(mn) && args != null && args.length >= 1) {
                             try {
                                 Object response = args[0];
@@ -458,7 +461,15 @@ public class TaobaoApplicationHook {
             // addListener(MtopListener) -> MtopBuilder
             builder.getClass().getMethod("addListener", mtopListenerClass).invoke(builder, proxy);
             // asyncRequest() -> ApiID
-            builder.getClass().getMethod("asyncRequest").invoke(builder);
+            Object apiId;
+            try {
+                apiId = builder.getClass().getMethod("asyncRequest").invoke(builder);
+            } catch (Throwable ae) {
+                // 某些 MTOP 版本方法名/签名不同，逐个尝试
+                android.util.Log.w(TAG, "MTOP asyncRequest failed, trying alternatives: " + ae.getMessage());
+                apiId = tryRequestMethods(builder);
+            }
+            android.util.Log.i(TAG, "MTOP debug: apiId=" + apiId + " for " + apiName);
 
             boolean done = latch.await(30, TimeUnit.SECONDS);
             if (!done) {
@@ -476,6 +487,21 @@ public class TaobaoApplicationHook {
             android.util.Log.e(TAG, "requestString exception: " + apiName, t);
             return null;
         }
+    }
+
+    /** asyncRequest 失败时尝试其它请求触发方法 */
+    private static Object tryRequestMethods(Object builder) {
+        String[] candidates = {"startRequest", "syncRequest", "request", "asyncSend", "sendRequest"};
+        for (String cn : candidates) {
+            try {
+                Method m = builder.getClass().getMethod(cn);
+                Object r = m.invoke(builder);
+                android.util.Log.i(TAG, "MTOP debug: used request method " + cn);
+                return r;
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
     }
 
     private static Object getMtopInstance() {
