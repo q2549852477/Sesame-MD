@@ -395,6 +395,9 @@ public class TaobaoApplicationHook {
                 android.util.Log.w(TAG, "requestString: no Mtop instance for " + apiName);
                 return null;
             }
+            if (sessionDebugOnce.compareAndSet(false, true)) {
+                dumpSession(mtopInstance);
+            }
 
             Class<?> reqClass = classLoader.loadClass("mtopsdk.mtop.domain.MtopRequest");
             Object req = reqClass.getConstructor().newInstance();
@@ -432,6 +435,42 @@ public class TaobaoApplicationHook {
             android.util.Log.e(TAG, "requestString exception: " + apiName, t);
             return null;
         }
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean sessionDebugOnce =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** 诊断 Mtop 实例的登录/session 状态 */
+    private static void dumpSession(Object mtopInstance) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("mtop=").append(mtopInstance.getClass().getName()).append("\n");
+        // 常见 session 查询方法
+        for (String m : new String[]{"isSessionValid", "isLogined", "isLogin", "getSessionId", "getSid"}) {
+            try {
+                Object v = mtopInstance.getClass().getMethod(m).invoke(mtopInstance);
+                sb.append(m).append("=").append(v).append("\n");
+            } catch (Throwable ignored) {}
+        }
+        // 列出该实例的所有方法名（帮助找 session/登录相关 API）
+        try {
+            for (Method mm : mtopInstance.getClass().getMethods()) {
+                String n = mm.getName().toLowerCase();
+                if (n.contains("session") || n.contains("login") || n.contains("sid") || n.contains("cookie")) {
+                    sb.append("M.").append(mm.getName()).append("(").append(paramStr(mm)).append(")\n");
+                }
+            }
+        } catch (Throwable ignored) {}
+        android.util.Log.i(TAG, "SESSION DIAG:\n" + sb);
+    }
+
+    private static String paramStr(Method m) {
+        StringBuilder sb = new StringBuilder();
+        Class<?>[] ps = m.getParameterTypes();
+        for (int i = 0; i < ps.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(ps[i].getSimpleName());
+        }
+        return sb.toString();
     }
 
     /** 从 MtopResponse 提取响应体字符串：优先 bytedata()，退而 getData() */
