@@ -479,7 +479,43 @@ public class TaobaoApplicationHook {
         } catch (Throwable t) {
             sb.append("F.err=").append(t.getMessage()).append("\n");
         }
+        // 深入 MtopConfig：sid/session 实际存这里
+        try {
+            java.lang.reflect.Field cfgField = findField(mtopInstance, "mtopConfig");
+            if (cfgField != null) {
+                Object cfg = cfgField.get(mtopInstance);
+                sb.append("--- MtopConfig fields ---\n");
+                Class<?> cc = cfg.getClass();
+                while (cc != null && cc != Object.class) {
+                    for (java.lang.reflect.Field f : cc.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        f.setAccessible(true);
+                        Object v = f.get(cfg);
+                        String vn = String.valueOf(v);
+                        if (vn != null && (vn.length() < 120)) {
+                            sb.append("CFG.").append(cc.getSimpleName()).append(".").append(f.getName())
+                              .append("=").append(vn).append("\n");
+                        }
+                    }
+                    cc = cc.getSuperclass();
+                }
+            }
+        } catch (Throwable t) {
+            sb.append("CFG.err=").append(t.getMessage()).append("\n");
+        }
         android.util.Log.i(TAG, "SESSION DIAG:\n" + sb);
+    }
+
+    private static java.lang.reflect.Field findField(Object obj, String name) {
+        Class<?> c = obj.getClass();
+        while (c != null && c != Object.class) {
+            try {
+                return c.getDeclaredField(name);
+            } catch (NoSuchFieldException e) {
+                c = c.getSuperclass();
+            }
+        }
+        return null;
     }
 
     private static String paramStr(Method m) {
