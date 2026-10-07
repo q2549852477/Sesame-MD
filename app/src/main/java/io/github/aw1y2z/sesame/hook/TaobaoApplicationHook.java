@@ -432,6 +432,11 @@ public class TaobaoApplicationHook {
                 dumpResponse(response);
             }
 
+            // 捕获登录账号信息写入共享文件，供模块 UI 配置页展示（镜像支付宝账号列表）
+            if (apiName != null && apiName.contains("main.get")) {
+                publishAccount(mtopInstance, dataStr);
+            }
+
             // 从 MtopResponse 取数据：优先 bytedata()（byte[]），退而 getData()
             String dataStr = extractResponseData(response);
             // 记录 retCode 便于诊断（FAIL_SYS_* 说明业务/签名问题）
@@ -677,6 +682,60 @@ public class TaobaoApplicationHook {
             } catch (Throwable ignored) {}
         }
         return null;
+    }
+
+    /** 账号信息桥接文件：淘宝进程写入（世界可读），模块 UI(独立 uid)读取，供配置页展示登录账号 */
+    private static final String TB_ACCOUNT_FILE = "/data/local/tmp/sesame_tb_account.json";
+
+    /**
+     * 把当前登录账号信息写到 TB_ACCOUNT_FILE。
+     * userId/nickname 从 main.get 响应里挖（字段名做容错），写失败静默降级（UI 只显示 userId）。
+     */
+    private static void publishAccount(Object mtopInstance, String mainGetData) {
+        String userId = null, nickname = null;
+        try {
+            Object u = mtopInstance.getClass().getMethod("getUserId").invoke(mtopInstance);
+            if (u != null && !"null".equals(String.valueOf(u))) userId = String.valueOf(u);
+        } catch (Throwable ignored) {}
+
+        if (mainGetData != null) {
+            try {
+                org.json.JSONObject root = new org.json.JSONObject(mainGetData);
+                org.json.JSONObject data = root.optJSONObject("data");
+                if (data != null) {
+                    userId = firstNonEmpty(userId, data, "userId", "user_id", "uid");
+                    nickname = firstNonEmpty(null, data, "userNick", "nick", "nickname", "showName",
+                            "name", "account", "loginId");
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 兜底：main.get 结构未知时，用 MTOP 的 userId 展示，避免空白
+        String label = (nickname != null && !nickname.isEmpty()) ? nickname : (userId != null ? userId : "淘宝");
+        try {
+            org.json.JSONObject out = new org.json.JSONObject();
+            out.put("userId", userId != null ? userId : "");
+            out.put("nickname", nickname != null ? nickname : "");
+            out.put("label", label);
+            out.put("ts", System.currentTimeMillis());
+            java.io.File f = new java.io.File(TB_ACCOUNT_FILE);
+            try (java.io.FileWriter fw = new java.io.FileWriter(f)) {
+                fw.write(out.toString());
+            }
+            android.util.Log.i(TAG, "publishAccount: userId=" + userId + " nickname=" + nickname);
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "publishAccount failed: " + t.getMessage());
+        }
+    }
+
+    private static String firstNonEmpty(String def, org.json.JSONObject jo, String... keys) {
+        for (String k : keys) {
+            try {
+                String v = jo.optString(k, null);
+                if (v != null && !v.isEmpty()) return v;
+            } catch (Throwable ignored) {}
+        }
+        return def;
     }
 
     /** 遍历 Mtop 静态 Map，返回 sid 非空的登录实例；找不到返回 null */

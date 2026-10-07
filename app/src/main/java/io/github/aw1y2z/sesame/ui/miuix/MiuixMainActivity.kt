@@ -703,6 +703,35 @@ fun openLog(activity: MiuixMainActivity, logType: LogType) {
     }
 }
 
+/** 淘宝登录账号（由淘宝进程 hook 写入共享文件，模块 UI 读取展示） */
+private data class TaobaoAccount(val label: String, val summary: String)
+
+/**
+ * 读取淘宝登录账号桥接文件。
+ * 淘宝进程在 main.get 成功后把 {userId, nickname, label} 写到该文件；这里解析展示。
+ * 读不到（未打开淘宝/被 SELinux 拦截/文件不存在）返回 null，UI 显示占位文案。
+ */
+private fun readTaobaoAccount(): TaobaoAccount? {
+    try {
+        val f = File("/data/local/tmp/sesame_tb_account.json")
+        if (!f.exists()) return null
+        val jo = org.json.JSONObject(f.readText())
+        val label = jo.optString("label", "").ifEmpty {
+            jo.optString("userId", "").ifEmpty { "淘宝" }
+        }
+        val nickname = jo.optString("nickname", "")
+        val userId = jo.optString("userId", "")
+        // 副标题镜像支付宝：昵称非空显示「昵称」，否则显示 userId
+        val summary = if (nickname.isNotEmpty()) nickname
+        else if (userId.isNotEmpty()) "ID $userId"
+        else "淘宝农场"
+        return TaobaoAccount(label, summary)
+    } catch (e: Exception) {
+        Log.printStackTrace(e)
+        return null
+    }
+}
+
 @Composable
 fun ConfigTab(activity: MiuixMainActivity) {
     val context = LocalContext.current
@@ -757,11 +786,13 @@ fun ConfigTab(activity: MiuixMainActivity) {
     }
     Spacer(Modifier.height(12.dp))
 
+    // 淘宝账号：镜像支付宝——hook 拿到登录实例后把账号信息写到共享文件，这里读取并展示
+    val taobaoAccount = remember { readTaobaoAccount() }
     SmallTitle(text = "淘宝")
     CardColumn {
         ArrowPreference(
-            title = "淘宝农场",
-            summary = "自动浇水/做任务/领礼包",
+            title = if (taobaoAccount != null) taobaoAccount.label else "默认",
+            summary = if (taobaoAccount != null) taobaoAccount.summary else "未获取到登录账号，打开淘宝App后自动同步",
             onClick = {
                 context.startActivity(Intent(context, MiuixTaobaoSettingsActivity::class.java))
             }
