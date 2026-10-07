@@ -164,6 +164,10 @@ class MiuixMainActivity : MiuixBaseActivity() {
                             isClick = false
                         }
                     }
+                    "io.github.aw1y2z.sesame.taobao.status" -> {
+                        // 淘宝 hook 已激活
+                        Log.i("Taobao hook active")
+                    }
                 }
             }
         }
@@ -182,6 +186,7 @@ class MiuixMainActivity : MiuixBaseActivity() {
         updateSubTitle(ViewAppInfo.getRunType())
         val intentFilter = IntentFilter()
         intentFilter.addAction("io.github.aw1y2z.sesame.status")
+        intentFilter.addAction("io.github.aw1y2z.sesame.taobao.status")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(broadcastReceiver, intentFilter, Context.RECEIVER_EXPORTED)
         } else {
@@ -736,7 +741,7 @@ fun ConfigTab(activity: MiuixMainActivity) {
         modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
     )
 
-    SmallTitle(text = "配置管理")
+    SmallTitle(text = "支付宝")
     CardColumn {
         items.forEach { (userId, title, summary) ->
             ArrowPreference(
@@ -749,6 +754,18 @@ fun ConfigTab(activity: MiuixMainActivity) {
                 }
             )
         }
+    }
+    Spacer(Modifier.height(12.dp))
+
+    SmallTitle(text = "淘宝")
+    CardColumn {
+        ArrowPreference(
+            title = "淘宝农场",
+            summary = "自动浇水/做任务/领礼包",
+            onClick = {
+                context.startActivity(Intent(context, MiuixTaobaoSettingsActivity::class.java))
+            }
+        )
     }
     Spacer(Modifier.height(16.dp))
 

@@ -470,7 +470,8 @@ public class ApplicationHook extends XposedModule {
         }
 
         // 淘宝 App：hook MTOP SDK 供淘宝农场使用
-        if ("com.taobao.taobao".equals(lpparam.packageName) && "com.taobao.taobao".equals(lpparam.processName)) {
+        if ("com.taobao.taobao".equals(lpparam.packageName)) {
+            Log.i(TAG, "Taobao handleLoadPackage: process=" + lpparam.processName);
             TaobaoApplicationHook.handleLoadPackage(lpparam);
             if (TaobaoApplicationHook.isHooked()) {
                 Log.i(TAG, "Taobao hook loaded successfully");

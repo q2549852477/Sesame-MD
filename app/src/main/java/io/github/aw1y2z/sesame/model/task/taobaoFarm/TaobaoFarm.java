@@ -413,8 +413,7 @@ public class TaobaoFarm extends Model {
 
     private boolean isSuccess(JSONObject jo) {
         if (jo == null) return false;
-        Boolean s = jo.optBoolean("success", null);
-        if (s != null) return s;
+        if (jo.has("success")) return jo.optBoolean("success");
         String code = jo.optString("code", jo.optString("retCode", ""));
         return "SUCCESS".equalsIgnoreCase(code) || "200".equals(code);
     }

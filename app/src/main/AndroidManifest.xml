@@ -72,6 +72,11 @@
             android:exported="false"
             android:resizeableActivity="true" />
 
+        <activity
+            android:name=".ui.miuix.MiuixTaobaoSettingsActivity"
+            android:exported="false"
+            android:resizeableActivity="true" />
+
         <activity-alias
             android:name=".ui.MainActivityAlias"
             android:enabled="true"
