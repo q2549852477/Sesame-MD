@@ -400,7 +400,13 @@ public class TaobaoFarm extends Model {
 
     private JSONObject parseData(String response) throws Exception {
         JSONObject root = new JSONObject(response);
-        return root.optJSONObject("data") != null ? root.getJSONObject("data") : root;
+        JSONObject data = root.optJSONObject("data");
+        if (data == null) return root;
+        // MTOP 顶层 retCode/retMsg 才是成功与否的权威标志，data 内通常没有；
+        // 合并进来让 isSuccess/errorMsg 能读到（不覆盖 data 自身已有字段）
+        if (!data.has("retCode") && root.has("retCode")) data.put("retCode", root.optString("retCode"));
+        if (!data.has("retMsg") && root.has("retMsg")) data.put("retMsg", root.optString("retMsg"));
+        return data;
     }
 
     private JSONObject parseDataSafe(String response) {

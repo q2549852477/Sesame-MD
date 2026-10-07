@@ -618,19 +618,23 @@ public class TaobaoApplicationHook {
         android.util.Log.i(TAG, "RESP DIAG:\n" + sb);
     }
 
-    /** 从 MtopResponse 提取响应体字符串：优先 bytedata()，退而 getData() */
+    /** 从 MtopResponse 提取响应体字符串：getBytedata()（byte[]）→ getDataJsonObject() */
     private static String extractResponseData(Object response) {
         try {
-            Object bd;
+            // 主：getBytedata() 返回原始响应字节
             try {
-                bd = response.getClass().getMethod("bytedata").invoke(response);
-            } catch (Throwable e) {
-                bd = response.getClass().getMethod("getData").invoke(response);
-            }
-            if (bd instanceof byte[]) {
-                return new String((byte[]) bd, "UTF-8");
-            }
-            return bd != null ? bd.toString() : null;
+                Object bd = response.getClass().getMethod("getBytedata").invoke(response);
+                if (bd instanceof byte[]) {
+                    byte[] arr = (byte[]) bd;
+                    if (arr.length > 0) return new String(arr, "UTF-8");
+                }
+            } catch (Throwable ignored) {}
+            // 退而：getDataJsonObject() 返回已解析的 JSON 对象（toString 为 JSON 串）
+            try {
+                Object dj = response.getClass().getMethod("getDataJsonObject").invoke(response);
+                if (dj != null) return dj.toString();
+            } catch (Throwable ignored) {}
+            return null;
         } catch (Throwable t) {
             android.util.Log.w(TAG, "extractResponseData: " + t.getMessage());
             return null;
