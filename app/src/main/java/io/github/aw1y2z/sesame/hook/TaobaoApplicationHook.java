@@ -397,6 +397,7 @@ public class TaobaoApplicationHook {
             }
             if (sessionDebugOnce.compareAndSet(false, true)) {
                 dumpSession(mtopInstance);
+                dumpAllMtopInstances();
             }
 
             Class<?> reqClass = classLoader.loadClass("mtopsdk.mtop.domain.MtopRequest");
@@ -504,6 +505,42 @@ public class TaobaoApplicationHook {
             sb.append("CFG.err=").append(t.getMessage()).append("\n");
         }
         android.util.Log.i(TAG, "SESSION DIAG:\n" + sb);
+    }
+
+    /** 遍历 Mtop 静态注册表里的所有实例，找出 appKey/sid 非空（真正登录）的那个 */
+    private static void dumpAllMtopInstances() {
+        try {
+            // Mtop 静态字段里通常有个 Map<String, Mtop> 存所有实例
+            for (java.lang.reflect.Field sf : mtopClassRef.getDeclaredFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(sf.getModifiers())) continue;
+                sf.setAccessible(true);
+                Object val = sf.get(null);
+                if (val instanceof java.util.Map) {
+                    java.util.Map<?, ?> map = (java.util.Map<?, ?>) val;
+                    for (java.util.Map.Entry<?, ?> e : map.entrySet()) {
+                        Object inst = e.getValue();
+                        if (inst == null) continue;
+                        String appKey = null, sid = null, userId = null;
+                        try {
+                            java.lang.reflect.Field cf = findField(inst, "mtopConfig");
+                            if (cf != null) {
+                                Object cfg = cf.get(inst);
+                                if (cfg != null) {
+                                    java.lang.reflect.Field ak = findField(cfg, "appKey");
+                                    if (ak != null) { ak.setAccessible(true); appKey = String.valueOf(ak.get(cfg)); }
+                                }
+                            }
+                            sid = String.valueOf(inst.getClass().getMethod("getSid").invoke(inst));
+                            try { userId = String.valueOf(inst.getClass().getMethod("getUserId").invoke(inst)); } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {}
+                        android.util.Log.i(TAG, "MTOP-INST key=" + e.getKey()
+                                + " appKey=" + appKey + " sid=" + sid + " userId=" + userId);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "dumpAllMtopInstances: " + t.getMessage());
+        }
     }
 
     private static java.lang.reflect.Field findField(Object obj, String name) {
