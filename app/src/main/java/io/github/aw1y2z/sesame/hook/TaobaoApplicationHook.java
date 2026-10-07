@@ -418,6 +418,7 @@ public class TaobaoApplicationHook {
             Object builder = buildMethod.invoke(mtopInstance, req, version);
             android.util.Log.i(TAG, "MTOP debug: mtopInstance=" + mtopInstance.getClass().getName()
                     + " builder=" + (builder != null ? builder.getClass().getName() : "null") + " for " + apiName);
+            dumpMethodsOnce(builder);
 
             Class<?> mtopListenerClass = classLoader.loadClass("mtopsdk.mtop.common.MtopListener");
 
@@ -487,6 +488,37 @@ public class TaobaoApplicationHook {
             android.util.Log.e(TAG, "requestString exception: " + apiName, t);
             return null;
         }
+    }
+
+    private static volatile boolean dumpedBuilderMethods = false;
+    /** 打印 MtopBuilder 的方法名，用于确定正确的请求触发方法 */
+    private static void dumpMethodsOnce(Object builder) {
+        if (dumpedBuilderMethods || builder == null) return;
+        dumpedBuilderMethods = true;
+        try {
+            StringBuilder sb = new StringBuilder();
+            Class<?> c = builder.getClass();
+            while (c != null && c != Object.class) {
+                for (Method m : c.getMethods()) {
+                    sb.append(c.getSimpleName()).append(".").append(m.getName())
+                      .append("(").append(paramStr(m)).append(")\n");
+                }
+                c = c.getSuperclass();
+            }
+            android.util.Log.i(TAG, "MTOP methods:\n" + sb.toString());
+        } catch (Throwable t) {
+            android.util.Log.e(TAG, "dumpMethodsOnce: " + t.getMessage());
+        }
+    }
+
+    private static String paramStr(Method m) {
+        StringBuilder sb = new StringBuilder();
+        Class<?>[] ps = m.getParameterTypes();
+        for (int i = 0; i < ps.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(ps[i].getSimpleName());
+        }
+        return sb.toString();
     }
 
     /** asyncRequest 失败时尝试其它请求触发方法 */
