@@ -432,11 +432,6 @@ public class TaobaoApplicationHook {
                 dumpResponse(response);
             }
 
-            // 捕获登录账号信息写入共享文件，供模块 UI 配置页展示（镜像支付宝账号列表）
-            if (apiName != null && apiName.contains("main.get")) {
-                publishAccount(mtopInstance, dataStr);
-            }
-
             // 从 MtopResponse 取数据：优先 bytedata()（byte[]），退而 getData()
             String dataStr = extractResponseData(response);
             // 记录 retCode 便于诊断（FAIL_SYS_* 说明业务/签名问题）
@@ -449,6 +444,10 @@ public class TaobaoApplicationHook {
             // 临时：分块打印 main.get 完整响应（logcat 会对超长行自动续行），便于离线分析 openbox/gift 参数
             if (apiName != null && apiName.contains("main.get") && dataStr != null) {
                 android.util.Log.i(TAG, "MAINGET_FULL len=" + dataStr.length() + "\n" + dataStr);
+            }
+            // 捕获登录账号信息写入共享文件，供模块 UI 配置页展示（镜像支付宝账号列表）
+            if (apiName != null && apiName.contains("main.get")) {
+                publishAccount(mtopInstance, dataStr);
             }
             return dataStr;
         } catch (Throwable t) {
@@ -700,6 +699,16 @@ public class TaobaoApplicationHook {
                     userId = firstNonEmpty(userId, data, "userId", "user_id", "uid");
                     nickname = firstNonEmpty(null, data, "userNick", "nick", "nickname", "showName",
                             "name", "account", "loginId");
+                    // 账号身份更可能在 gameInfo.accountInfo 里，递归再挖一层
+                    org.json.JSONObject acc = data.optJSONObject("gameInfo") != null
+                            ? data.optJSONObject("gameInfo").optJSONObject("accountInfo") : null;
+                    if (acc != null) {
+                        if (userId == null || userId.isEmpty())
+                            userId = firstNonEmpty(null, acc, "userId", "user_id", "uid", "havanaId");
+                        if (nickname == null || nickname.isEmpty())
+                            nickname = firstNonEmpty(null, acc, "userNick", "nick", "nickname",
+                                    "showName", "name", "account", "loginId", "nickName");
+                    }
                 }
             } catch (Throwable ignored) {}
         }
