@@ -17,10 +17,6 @@ import io.github.aw1y2z.sesame.util.compat.XC_LoadPackage;
 import io.github.aw1y2z.sesame.util.compat.XC_MethodHook;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import lombok.Getter;
 
@@ -394,10 +390,6 @@ public class TaobaoApplicationHook {
             }
         }
         try {
-            CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<String> resultRef = new AtomicReference<>();
-            AtomicReference<Throwable> errorRef = new AtomicReference<>();
-
             Object mtopInstance = getMtopInstance();
             if (mtopInstance == null) {
                 android.util.Log.w(TAG, "requestString: no Mtop instance for " + apiName);
@@ -413,127 +405,52 @@ public class TaobaoApplicationHook {
             reqClass.getMethod("setData", String.class).invoke(req, params);
 
             // build(MtopRequest, String apiVersion) -> MtopBuilder
-            Class<?> mtopBuilderClass = classLoader.loadClass("mtopsdk.mtop.intf.MtopBuilder");
             Method buildMethod = mtopInstance.getClass().getMethod("build", reqClass, String.class);
             Object builder = buildMethod.invoke(mtopInstance, req, version);
-            android.util.Log.i(TAG, "MTOP debug: mtopInstance=" + mtopInstance.getClass().getName()
-                    + " builder=" + (builder != null ? builder.getClass().getName() : "null") + " for " + apiName);
-            dumpMethodsOnce(builder);
+            android.util.Log.i(TAG, "MTOP debug: builder=" + (builder != null ? builder.getClass().getName() : "null") + " for " + apiName);
 
-            Class<?> mtopListenerClass = classLoader.loadClass("mtopsdk.mtop.common.MtopListener");
+            // 用 syncRequest() 阻塞执行并直接返回 MtopResponse（异步 listener 回调在本环境不触发，
+            // 表现为 ApiID.call=null、30s 超时）。syncRequest 内部走同一网络栈，返回带 retCode 的响应对象。
+            Object response = builder.getClass().getMethod("syncRequest").invoke(builder);
+            if (response == null) {
+                android.util.Log.w(TAG, "MTOP syncRequest returned null: " + apiName);
+                return null;
+            }
+            android.util.Log.i(TAG, "MTOP debug: syncRequest -> " + response.getClass().getName() + " for " + apiName);
 
-            Proxy proxy = (Proxy) Proxy.newProxyInstance(
-                    classLoader, new Class<?>[]{mtopListenerClass},
-                    (proxyObj, method, args) -> {
-                        String mn = method.getName();
-                        android.util.Log.i(TAG, "MTOP listener cb: " + mn + " (" + apiName + ")");
-                        if ("onSuccess".equals(mn) && args != null && args.length >= 1) {
-                            try {
-                                Object response = args[0];
-                                try {
-                                    Method getData = response.getClass().getMethod("getData");
-                                    Object data = getData.invoke(response);
-                                    if (data instanceof byte[]) {
-                                        resultRef.set(new String((byte[]) data, "UTF-8"));
-                                    } else if (data != null) {
-                                        resultRef.set(data.toString());
-                                    }
-                                } catch (Throwable e) {
-                                    Method bytedata = response.getClass().getMethod("bytedata");
-                                    Object bd = bytedata.invoke(response);
-                                    if (bd instanceof byte[]) {
-                                        resultRef.set(new String((byte[]) bd, "UTF-8"));
-                                    }
-                                }
-                                latch.countDown();
-                            } catch (Throwable e) {
-                                errorRef.set(e);
-                                latch.countDown();
-                            }
-                        } else if ("onError".equals(mn)) {
-                            android.util.Log.w(TAG, "MTOP onError: " + apiName);
-                            latch.countDown();
-                        } else if ("onFinished".equals(mn)) {
-                            latch.countDown();
-                        }
-                        return null;
-                    });
-
-            // addListener(MtopListener) -> MtopBuilder
-            builder.getClass().getMethod("addListener", mtopListenerClass).invoke(builder, proxy);
-            // asyncRequest() -> ApiID
-            Object apiId;
+            // 从 MtopResponse 取数据：优先 bytedata()（byte[]），退而 getData()
+            String dataStr = extractResponseData(response);
+            // 记录 retCode 便于诊断（FAIL_SYS_* 说明业务/签名问题）
+            String retCode = null;
             try {
-                apiId = builder.getClass().getMethod("asyncRequest").invoke(builder);
-            } catch (Throwable ae) {
-                // 某些 MTOP 版本方法名/签名不同，逐个尝试
-                android.util.Log.w(TAG, "MTOP asyncRequest failed, trying alternatives: " + ae.getMessage());
-                apiId = tryRequestMethods(builder);
-            }
-            android.util.Log.i(TAG, "MTOP debug: apiId=" + apiId + " for " + apiName);
-
-            boolean done = latch.await(30, TimeUnit.SECONDS);
-            if (!done) {
-                android.util.Log.w(TAG, "MTOP timeout: " + apiName);
-                return null;
-            }
-            if (errorRef.get() != null) {
-                android.util.Log.e(TAG, "MTOP error: " + apiName, errorRef.get());
-                return null;
-            }
-            String result = resultRef.get();
-            android.util.Log.d(TAG, "MTOP " + apiName + " => " + (result != null ? result.substring(0, Math.min(150, result.length())) : "null"));
-            return result;
+                retCode = String.valueOf(response.getClass().getMethod("getRetCode").invoke(response));
+            } catch (Throwable ignored) {}
+            android.util.Log.i(TAG, "MTOP " + apiName + " retCode=" + retCode
+                    + " data=" + (dataStr != null ? dataStr.substring(0, Math.min(200, dataStr.length())) : "null"));
+            return dataStr;
         } catch (Throwable t) {
             android.util.Log.e(TAG, "requestString exception: " + apiName, t);
             return null;
         }
     }
 
-    private static volatile boolean dumpedBuilderMethods = false;
-    /** 打印 MtopBuilder 的方法名，用于确定正确的请求触发方法 */
-    private static void dumpMethodsOnce(Object builder) {
-        if (dumpedBuilderMethods || builder == null) return;
-        dumpedBuilderMethods = true;
+    /** 从 MtopResponse 提取响应体字符串：优先 bytedata()，退而 getData() */
+    private static String extractResponseData(Object response) {
         try {
-            StringBuilder sb = new StringBuilder();
-            Class<?> c = builder.getClass();
-            while (c != null && c != Object.class) {
-                for (Method m : c.getMethods()) {
-                    sb.append(c.getSimpleName()).append(".").append(m.getName())
-                      .append("(").append(paramStr(m)).append(")\n");
-                }
-                c = c.getSuperclass();
-            }
-            android.util.Log.i(TAG, "MTOP methods:\n" + sb.toString());
-        } catch (Throwable t) {
-            android.util.Log.e(TAG, "dumpMethodsOnce: " + t.getMessage());
-        }
-    }
-
-    private static String paramStr(Method m) {
-        StringBuilder sb = new StringBuilder();
-        Class<?>[] ps = m.getParameterTypes();
-        for (int i = 0; i < ps.length; i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(ps[i].getSimpleName());
-        }
-        return sb.toString();
-    }
-
-    /** asyncRequest 失败时尝试其它请求触发方法 */
-    private static Object tryRequestMethods(Object builder) {
-        String[] candidates = {"startRequest", "syncRequest", "request", "asyncSend", "sendRequest"};
-        for (String cn : candidates) {
+            Object bd;
             try {
-                Method m = builder.getClass().getMethod(cn);
-                Object r = m.invoke(builder);
-                android.util.Log.i(TAG, "MTOP debug: used request method " + cn);
-                return r;
-            } catch (Throwable ignored) {
+                bd = response.getClass().getMethod("bytedata").invoke(response);
+            } catch (Throwable e) {
+                bd = response.getClass().getMethod("getData").invoke(response);
             }
+            if (bd instanceof byte[]) {
+                return new String((byte[]) bd, "UTF-8");
+            }
+            return bd != null ? bd.toString() : null;
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "extractResponseData: " + t.getMessage());
+            return null;
         }
-        return null;
     }
 
     private static Object getMtopInstance() {
