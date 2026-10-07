@@ -427,6 +427,11 @@ public class TaobaoApplicationHook {
             }
             android.util.Log.i(TAG, "MTOP debug: syncRequest -> " + response.getClass().getName() + " for " + apiName);
 
+            // 首次诊断 MtopResponse 结构（取数方法/字段），确认 body 存放位置
+            if (responseDebugOnce.compareAndSet(false, true)) {
+                dumpResponse(response);
+            }
+
             // 从 MtopResponse 取数据：优先 bytedata()（byte[]），退而 getData()
             String dataStr = extractResponseData(response);
             // 记录 retCode 便于诊断（FAIL_SYS_* 说明业务/签名问题）
@@ -568,6 +573,49 @@ public class TaobaoApplicationHook {
             sb.append(ps[i].getSimpleName());
         }
         return sb.toString();
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean responseDebugOnce =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** 诊断 MtopResponse：列出取数相关方法 + 关键字段值，定位 body 存放处 */
+    private static void dumpResponse(Object response) {
+        StringBuilder sb = new StringBuilder("RESP class=").append(response.getClass().getName()).append("\n");
+        try {
+            for (Method mm : response.getClass().getMethods()) {
+                String n = mm.getName().toLowerCase();
+                if (mm.getParameterCount() == 0 && (n.contains("data") || n.contains("byte")
+                        || n.contains("json") || n.contains("response") || n.contains("ret"))) {
+                    sb.append("M.").append(mm.getName()).append(" -> ");
+                    try {
+                        Object v = mm.invoke(response);
+                        String vs = String.valueOf(v);
+                        sb.append(v == null ? "null" : (vs.length() > 100 ? vs.substring(0, 100) + "..." : vs));
+                    } catch (Throwable e) {
+                        sb.append("err:" + e.getMessage());
+                    }
+                    sb.append("\n");
+                }
+            }
+            // 字段
+            Class<?> c = response.getClass();
+            while (c != null && c != Object.class) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    Object v = f.get(response);
+                    String vn = String.valueOf(v);
+                    if (v != null && vn.length() < 150) {
+                        sb.append("F.").append(c.getSimpleName()).append(".").append(f.getName())
+                          .append("=").append(vn).append("\n");
+                    }
+                }
+                c = c.getSuperclass();
+            }
+        } catch (Throwable t) {
+            sb.append("err=").append(t.getMessage());
+        }
+        android.util.Log.i(TAG, "RESP DIAG:\n" + sb);
     }
 
     /** 从 MtopResponse 提取响应体字符串：优先 bytedata()，退而 getData() */
