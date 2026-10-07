@@ -455,11 +455,30 @@ public class TaobaoApplicationHook {
         try {
             for (Method mm : mtopInstance.getClass().getMethods()) {
                 String n = mm.getName().toLowerCase();
-                if (n.contains("session") || n.contains("login") || n.contains("sid") || n.contains("cookie")) {
+                if (n.contains("session") || n.contains("login") || n.contains("sid") || n.contains("cookie") || n.contains("user")) {
                     sb.append("M.").append(mm.getName()).append("(").append(paramStr(mm)).append(")\n");
                 }
             }
         } catch (Throwable ignored) {}
+        // 列出实例字段（含父类）当前值，定位 sid/session 存储位置
+        try {
+            Class<?> c = mtopInstance.getClass();
+            while (c != null && c != Object.class) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    Object v = f.get(mtopInstance);
+                    String vn = String.valueOf(v);
+                    if (vn != null && (vn.length() < 80)) {
+                        sb.append("F.").append(c.getSimpleName()).append(".").append(f.getName())
+                          .append("=").append(vn).append("\n");
+                    }
+                }
+                c = c.getSuperclass();
+            }
+        } catch (Throwable t) {
+            sb.append("F.err=").append(t.getMessage()).append("\n");
+        }
         android.util.Log.i(TAG, "SESSION DIAG:\n" + sb);
     }
 
