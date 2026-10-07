@@ -398,6 +398,11 @@ public class TaobaoApplicationHook {
             if (sessionDebugOnce.compareAndSet(false, true)) {
                 dumpSession(mtopInstance);
                 dumpAllMtopInstances();
+                try {
+                    Object sid = mtopInstance.getClass().getMethod("getSid").invoke(mtopInstance);
+                    Object uid = mtopInstance.getClass().getMethod("getUserId").invoke(mtopInstance);
+                    android.util.Log.i(TAG, "CHOSEN mtop: sid=" + sid + " userId=" + uid);
+                } catch (Throwable ignored) {}
             }
 
             Class<?> reqClass = classLoader.loadClass("mtopsdk.mtop.domain.MtopRequest");
