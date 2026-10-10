@@ -441,9 +441,16 @@ public class TaobaoApplicationHook {
             } catch (Throwable ignored) {}
             android.util.Log.i(TAG, "MTOP " + apiName + " retCode=" + retCode
                     + " data=" + (dataStr != null ? dataStr.substring(0, Math.min(200, dataStr.length())) : "null"));
-            // 临时：分块打印 main.get 完整响应（logcat 会对超长行自动续行），便于离线分析 openbox/gift 参数
+            // 临时：把 main.get 完整响应按 base64 分片打印（MG###=base64片段，单行无换行/控制字符），
+            // 离线按序号 base64 解码拼接，规避 logcat 4096 换行 + 同进程日志交织导致 JSON 损坏
             if (apiName != null && apiName.contains("main.get") && dataStr != null) {
-                android.util.Log.i(TAG, "MAINGET_FULL len=" + dataStr.length() + "\n" + dataStr);
+                String b64 = android.util.Base64.encodeToString(
+                        dataStr.getBytes("UTF-8"), android.util.Base64.NO_WRAP);
+                android.util.Log.i(TAG, "MG##T=" + (b64.length() / 600 + 1));
+                for (int c = 0, n = 0; c < b64.length(); c += 600, n++) {
+                    android.util.Log.i(TAG, "MG" + String.format("%03d", n) + "="
+                            + b64.substring(c, Math.min(b64.length(), c + 600)));
+                }
             }
             // 捕获登录账号信息写入共享文件，供模块 UI 配置页展示（镜像支付宝账号列表）
             if (apiName != null && apiName.contains("main.get")) {
