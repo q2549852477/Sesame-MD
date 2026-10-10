@@ -731,15 +731,16 @@ public class TaobaoApplicationHook {
         } catch (Throwable ignored) {}
         String json = out.toString();
 
-        // 淘宝(untrusted_app_32) 无法写 /data/local/tmp(shell_data_file)、支付宝目录(770)；
-        // 依次尝试多个共享路径，记录哪个成功，供模块 UI 读取
+        // 淘宝(targetSdk33, scoped storage) 只能写自己的沙盒；模块 App 有 MANAGE_EXTERNAL_STORAGE(全文件访问)可读。
+        // 依次尝试，记录哪个成功，供模块 UI 读取
         String[] paths = {
-                "/sdcard/sesame_bridge/sesame_tb_account.json",
-                "/storage/emulated/0/sesame_bridge/sesame_tb_account.json",
-                "/sdcard/Android/media/sesame_bridge/sesame_tb_account.json",
-                "/data/local/tmp/sesame_tb_account.json",
+                context != null
+                        ? context.getExternalFilesDir(null) + "/sesame_tb_account.json" : "",
+                "/sdcard/Android/data/com.taobao.taobao/files/sesame_tb_account.json",
+                context != null ? context.getFilesDir() + "/sesame_tb_account.json" : "",
         };
         for (String p : paths) {
+            if (p == null || p.isEmpty()) continue;
             try {
                 java.io.File f = new java.io.File(p);
                 f.getParentFile().mkdirs();

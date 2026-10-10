@@ -714,9 +714,9 @@ private data class TaobaoAccount(val label: String, val summary: String)
 private fun readTaobaoAccount(): TaobaoAccount? {
     // 与 hook publishAccount 写入的候选路径一致（淘宝进程写哪个，UI 就读哪个）
     val candidates = listOf(
+        "/sdcard/Android/data/com.taobao.taobao/files/sesame_tb_account.json",
         "/sdcard/sesame_bridge/sesame_tb_account.json",
         "/storage/emulated/0/sesame_bridge/sesame_tb_account.json",
-        "/sdcard/Android/media/sesame_bridge/sesame_tb_account.json",
         "/data/local/tmp/sesame_tb_account.json"
     )
     for (path in candidates) {
@@ -739,6 +739,18 @@ private fun readTaobaoAccount(): TaobaoAccount? {
         }
     }
     return null
+}
+
+/** 临时诊断：模块 App(独立 uid) 能读哪些跨进程位置，用于确认账号桥接可读性 */
+private fun probeCrossProcessRead(): String {
+    val parts = ArrayList<String>()
+    // 全文件访问探针：root 预置 /sdcard/sesame_bridge/w.txt
+    parts.add("bridge=" + try { File("/sdcard/sesame_bridge/w.txt").readText().trim() } catch (e: Exception) { "X" })
+    // 淘宝外部沙盒探针：root 预置 /sdcard/Android/data/com.taobao.taobao/files/sesame_probe.txt
+    parts.add("tbSandbox=" + try {
+        File("/sdcard/Android/data/com.taobao.taobao/files/sesame_probe.txt").readText().trim()
+    } catch (e: Exception) { "X" })
+    return parts.joinToString(" ")
 }
 
 @Composable
@@ -797,11 +809,13 @@ fun ConfigTab(activity: MiuixMainActivity) {
 
     // 淘宝账号：镜像支付宝——hook 拿到登录实例后把账号信息写到共享文件，这里读取并展示
     val taobaoAccount = remember { readTaobaoAccount() }
+    val tbProbe = remember { if (taobaoAccount == null) probeCrossProcessRead() else "" }
     SmallTitle(text = "淘宝")
     CardColumn {
         ArrowPreference(
             title = if (taobaoAccount != null) taobaoAccount.label else "默认",
-            summary = if (taobaoAccount != null) taobaoAccount.summary else "未获取到登录账号，打开淘宝App后自动同步",
+            summary = if (taobaoAccount != null) taobaoAccount.summary
+            else "未获取到登录账号，打开淘宝App后自动同步" + (tbProbe.isNotEmpty() ? " [$tbProbe]" : ""),
             onClick = {
                 context.startActivity(Intent(context, MiuixTaobaoSettingsActivity::class.java))
             }
