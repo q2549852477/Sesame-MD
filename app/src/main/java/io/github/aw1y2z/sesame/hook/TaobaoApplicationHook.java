@@ -722,19 +722,35 @@ public class TaobaoApplicationHook {
 
         // 兜底：main.get 结构未知时，用 MTOP 的 userId 展示，避免空白
         String label = (nickname != null && !nickname.isEmpty()) ? nickname : (userId != null ? userId : "淘宝");
+        org.json.JSONObject out = new org.json.JSONObject();
         try {
-            org.json.JSONObject out = new org.json.JSONObject();
             out.put("userId", userId != null ? userId : "");
             out.put("nickname", nickname != null ? nickname : "");
             out.put("label", label);
             out.put("ts", System.currentTimeMillis());
-            java.io.File f = new java.io.File(TB_ACCOUNT_FILE);
-            try (java.io.FileWriter fw = new java.io.FileWriter(f)) {
-                fw.write(out.toString());
+        } catch (Throwable ignored) {}
+        String json = out.toString();
+
+        // 淘宝(untrusted_app_32) 无法写 /data/local/tmp(shell_data_file)、支付宝目录(770)；
+        // 依次尝试多个共享路径，记录哪个成功，供模块 UI 读取
+        String[] paths = {
+                "/sdcard/sesame_bridge/sesame_tb_account.json",
+                "/storage/emulated/0/sesame_bridge/sesame_tb_account.json",
+                "/sdcard/Android/media/sesame_bridge/sesame_tb_account.json",
+                "/data/local/tmp/sesame_tb_account.json",
+        };
+        for (String p : paths) {
+            try {
+                java.io.File f = new java.io.File(p);
+                f.getParentFile().mkdirs();
+                try (java.io.FileWriter fw = new java.io.FileWriter(f)) {
+                    fw.write(json);
+                }
+                android.util.Log.i(TAG, "publishAccount OK path=" + p + " userId=" + userId + " nickname=" + nickname);
+                return;
+            } catch (Throwable t) {
+                android.util.Log.w(TAG, "publishAccount fail path=" + p + " err=" + t.getMessage());
             }
-            android.util.Log.i(TAG, "publishAccount: userId=" + userId + " nickname=" + nickname);
-        } catch (Throwable t) {
-            android.util.Log.w(TAG, "publishAccount failed: " + t.getMessage());
         }
     }
 

@@ -712,24 +712,33 @@ private data class TaobaoAccount(val label: String, val summary: String)
  * 读不到（未打开淘宝/被 SELinux 拦截/文件不存在）返回 null，UI 显示占位文案。
  */
 private fun readTaobaoAccount(): TaobaoAccount? {
-    try {
-        val f = File("/data/local/tmp/sesame_tb_account.json")
-        if (!f.exists()) return null
-        val jo = org.json.JSONObject(f.readText())
-        val label = jo.optString("label", "").ifEmpty {
-            jo.optString("userId", "").ifEmpty { "淘宝" }
+    // 与 hook publishAccount 写入的候选路径一致（淘宝进程写哪个，UI 就读哪个）
+    val candidates = listOf(
+        "/sdcard/sesame_bridge/sesame_tb_account.json",
+        "/storage/emulated/0/sesame_bridge/sesame_tb_account.json",
+        "/sdcard/Android/media/sesame_bridge/sesame_tb_account.json",
+        "/data/local/tmp/sesame_tb_account.json"
+    )
+    for (path in candidates) {
+        try {
+            val f = File(path)
+            if (!f.exists()) continue
+            val jo = org.json.JSONObject(f.readText())
+            val label = jo.optString("label", "").ifEmpty {
+                jo.optString("userId", "").ifEmpty { "淘宝" }
+            }
+            val nickname = jo.optString("nickname", "")
+            val userId = jo.optString("userId", "")
+            // 副标题镜像支付宝：昵称非空显示「昵称」，否则显示 userId
+            val summary = if (nickname.isNotEmpty()) nickname
+            else if (userId.isNotEmpty()) "ID $userId"
+            else "淘宝农场"
+            return TaobaoAccount(label, summary)
+        } catch (e: Exception) {
+            Log.printStackTrace(e)
         }
-        val nickname = jo.optString("nickname", "")
-        val userId = jo.optString("userId", "")
-        // 副标题镜像支付宝：昵称非空显示「昵称」，否则显示 userId
-        val summary = if (nickname.isNotEmpty()) nickname
-        else if (userId.isNotEmpty()) "ID $userId"
-        else "淘宝农场"
-        return TaobaoAccount(label, summary)
-    } catch (e: Exception) {
-        Log.printStackTrace(e)
-        return null
     }
+    return null
 }
 
 @Composable
