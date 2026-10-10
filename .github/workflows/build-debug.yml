@@ -3,6 +3,12 @@ name: Build Debug APK
 on:
   push:
     branches: [MIUIX-api102]
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: "ABI: 空=全架构, arm64=仅arm64(手机安装更快, 体积小)"
+        required: false
+        default: ""
 
 jobs:
   build:
@@ -24,10 +30,20 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # assembleNormalDebug 本来就按 ABI 出包：app-normal-arm64-v8a-debug.apk + app-normal-universal-debug.apk
+      # 手机是 arm64，只传 arm64 包（~20MB zip），下载/安装都远比 universal 全架构包快
       - name: Build debug APK
         run: ./gradlew assembleNormalDebug
 
-      - name: Upload debug APK
+      - name: Upload debug APK (arm64)
+        if: github.event.inputs.abi == 'arm64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sesame-debug
+          path: app/build/outputs/apk/normal/debug/*-arm64-v8a-debug.apk
+
+      - name: Upload debug APK (full, default)
+        if: github.event.inputs.abi != 'arm64'
         uses: actions/upload-artifact@v4
         with:
           name: sesame-debug
