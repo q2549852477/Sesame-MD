@@ -441,18 +441,7 @@ public class TaobaoApplicationHook {
             } catch (Throwable ignored) {}
             android.util.Log.i(TAG, "MTOP " + apiName + " retCode=" + retCode
                     + " data=" + (dataStr != null ? dataStr.substring(0, Math.min(200, dataStr.length())) : "null"));
-            // 临时：把 main.get 完整响应按 base64 分片打印（MG###=base64片段，单行无换行/控制字符），
-            // 离线按序号 base64 解码拼接，规避 logcat 4096 换行 + 同进程日志交织导致 JSON 损坏
-            if (apiName != null && apiName.contains("main.get") && dataStr != null) {
-                String b64 = android.util.Base64.encodeToString(
-                        dataStr.getBytes("UTF-8"), android.util.Base64.NO_WRAP);
-                android.util.Log.i(TAG, "MG##T=" + (b64.length() / 600 + 1));
-                for (int c = 0, n = 0; c < b64.length(); c += 600, n++) {
-                    android.util.Log.i(TAG, "MG" + String.format("%03d", n) + "="
-                            + b64.substring(c, Math.min(b64.length(), c + 600)));
-                }
-            }
-            // 捕获登录账号信息写入共享文件，供模块 UI 配置页展示（镜像支付宝账号列表）
+            // 捕获登录账号信息写入 SystemProperties，供模块 UI 配置页展示（镜像支付宝账号列表）
             if (apiName != null && apiName.contains("main.get")) {
                 publishAccount(mtopInstance, dataStr);
             }
@@ -684,12 +673,19 @@ public class TaobaoApplicationHook {
         return null;
     }
 
-    /** 账号信息桥接文件：淘宝进程写入（世界可读），模块 UI(独立 uid)读取，供配置页展示登录账号 */
-    private static final String TB_ACCOUNT_FILE = "/data/local/tmp/sesame_tb_account.json";
+    /**
+     * 淘宝(targetSdk33, scoped storage) 无法写任何 /sdcard 共享路径（EPERM），自己沙盒模块 App 又读不到。
+     * 改用 hidden SystemProperties 命名空间：hook 在淘宝进程以 uid1000(LSPosed) 运行，setprop 可写；
+     * 模块 App 用 SystemProperties.get 读任意命名空间（native，绕过 App 命名空间白名单），无需文件/SELinux。
+     */
+    private static final String PROP_USERID = "persist.sesame.tb.uid";
+    private static final String PROP_NICK = "persist.sesame.tb.nick";
+    private static final String PROP_LABEL = "persist.sesame.tb.label";
+    private static final String PROP_TS = "persist.sesame.tb.ts";
 
     /**
-     * 把当前登录账号信息写到 TB_ACCOUNT_FILE。
-     * userId/nickname 从 main.get 响应里挖（字段名做容错），写失败静默降级（UI 只显示 userId）。
+     * 把当前登录账号信息写入 SystemProperties。
+     * userId 从 MTOP getUserId() 取，nickname 从 main.get 响应里挖（字段名做容错），写失败静默降级。
      */
     private static void publishAccount(Object mtopInstance, String mainGetData) {
         String userId = null, nickname = null;
@@ -706,7 +702,6 @@ public class TaobaoApplicationHook {
                     userId = firstNonEmpty(userId, data, "userId", "user_id", "uid");
                     nickname = firstNonEmpty(null, data, "userNick", "nick", "nickname", "showName",
                             "name", "account", "loginId");
-                    // 账号身份更可能在 gameInfo.accountInfo 里，递归再挖一层
                     org.json.JSONObject acc = data.optJSONObject("gameInfo") != null
                             ? data.optJSONObject("gameInfo").optJSONObject("accountInfo") : null;
                     if (acc != null) {
@@ -720,38 +715,20 @@ public class TaobaoApplicationHook {
             } catch (Throwable ignored) {}
         }
 
-        // 兜底：main.get 结构未知时，用 MTOP 的 userId 展示，避免空白
         String label = (nickname != null && !nickname.isEmpty()) ? nickname : (userId != null ? userId : "淘宝");
-        org.json.JSONObject out = new org.json.JSONObject();
-        try {
-            out.put("userId", userId != null ? userId : "");
-            out.put("nickname", nickname != null ? nickname : "");
-            out.put("label", label);
-            out.put("ts", System.currentTimeMillis());
-        } catch (Throwable ignored) {}
-        String json = out.toString();
+        setSesameProp(PROP_USERID, userId != null ? userId : "");
+        setSesameProp(PROP_NICK, nickname != null ? nickname : "");
+        setSesameProp(PROP_LABEL, label);
+        setSesameProp(PROP_TS, String.valueOf(System.currentTimeMillis()));
+        android.util.Log.i(TAG, "publishAccount userId=" + userId + " nickname=" + nickname + " label=" + label);
+    }
 
-        // 淘宝(targetSdk33, scoped storage) 只能写自己的沙盒；模块 App 有 MANAGE_EXTERNAL_STORAGE(全文件访问)可读。
-        // 依次尝试，记录哪个成功，供模块 UI 读取
-        String[] paths = {
-                context != null
-                        ? context.getExternalFilesDir(null) + "/sesame_tb_account.json" : "",
-                "/sdcard/Android/data/com.taobao.taobao/files/sesame_tb_account.json",
-                context != null ? context.getFilesDir() + "/sesame_tb_account.json" : "",
-        };
-        for (String p : paths) {
-            if (p == null || p.isEmpty()) continue;
-            try {
-                java.io.File f = new java.io.File(p);
-                f.getParentFile().mkdirs();
-                try (java.io.FileWriter fw = new java.io.FileWriter(f)) {
-                    fw.write(json);
-                }
-                android.util.Log.i(TAG, "publishAccount OK path=" + p + " userId=" + userId + " nickname=" + nickname);
-                return;
-            } catch (Throwable t) {
-                android.util.Log.w(TAG, "publishAccount fail path=" + p + " err=" + t.getMessage());
-            }
+    private static void setSesameProp(String key, String value) {
+        try {
+            Class<?> sp = Class.forName("android.os.SystemProperties");
+            sp.getMethod("set", String.class, String.class).invoke(null, key, value);
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "setSesameProp " + key + " failed: " + t.getMessage());
         }
     }
 

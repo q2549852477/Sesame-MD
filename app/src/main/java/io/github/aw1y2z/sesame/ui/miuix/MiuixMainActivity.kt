@@ -703,54 +703,39 @@ fun openLog(activity: MiuixMainActivity, logType: LogType) {
     }
 }
 
-/** 淘宝登录账号（由淘宝进程 hook 写入共享文件，模块 UI 读取展示） */
+/** 淘宝登录账号（由淘宝进程 hook 写入 SystemProperties，模块 UI 读取展示） */
 private data class TaobaoAccount(val label: String, val summary: String)
 
-/**
- * 读取淘宝登录账号桥接文件。
- * 淘宝进程在 main.get 成功后把 {userId, nickname, label} 写到该文件；这里解析展示。
- * 读不到（未打开淘宝/被 SELinux 拦截/文件不存在）返回 null，UI 显示占位文案。
- */
-private fun readTaobaoAccount(): TaobaoAccount? {
-    // 与 hook publishAccount 写入的候选路径一致（淘宝进程写哪个，UI 就读哪个）
-    val candidates = listOf(
-        "/sdcard/Android/data/com.taobao.taobao/files/sesame_tb_account.json",
-        "/sdcard/sesame_bridge/sesame_tb_account.json",
-        "/storage/emulated/0/sesame_bridge/sesame_tb_account.json",
-        "/data/local/tmp/sesame_tb_account.json"
-    )
-    for (path in candidates) {
-        try {
-            val f = File(path)
-            if (!f.exists()) continue
-            val jo = org.json.JSONObject(f.readText())
-            val label = jo.optString("label", "").ifEmpty {
-                jo.optString("userId", "").ifEmpty { "淘宝" }
-            }
-            val nickname = jo.optString("nickname", "")
-            val userId = jo.optString("userId", "")
-            // 副标题镜像支付宝：昵称非空显示「昵称」，否则显示 userId
-            val summary = if (nickname.isNotEmpty()) nickname
-            else if (userId.isNotEmpty()) "ID $userId"
-            else "淘宝农场"
-            return TaobaoAccount(label, summary)
-        } catch (e: Exception) {
-            Log.printStackTrace(e)
-        }
+/** 反射调用 android.os.SystemProperties.get（App 可读任意命名空间的 persist.* 属性，无需文件/SELinux） */
+private fun sysProp(key: String): String? {
+    return try {
+        val m = Class.forName("android.os.SystemProperties")
+            .getMethod("get", String::class.java, String::class.java)
+        m.invoke(null, key, "") as String
+    } catch (e: Throwable) {
+        null
     }
-    return null
 }
 
-/** 临时诊断：模块 App(独立 uid) 能读哪些跨进程位置，用于确认账号桥接可读性 */
-private fun probeCrossProcessRead(): String {
-    val parts = ArrayList<String>()
-    // 全文件访问探针：root 预置 /sdcard/sesame_bridge/w.txt
-    parts.add("bridge=" + try { File("/sdcard/sesame_bridge/w.txt").readText().trim() } catch (e: Exception) { "X" })
-    // 淘宝外部沙盒探针：root 预置 /sdcard/Android/data/com.taobao.taobao/files/sesame_probe.txt
-    parts.add("tbSandbox=" + try {
-        File("/sdcard/Android/data/com.taobao.taobao/files/sesame_probe.txt").readText().trim()
-    } catch (e: Exception) { "X" })
-    return parts.joinToString(" ")
+/**
+ * 读取淘宝登录账号（hook 在 main.get 成功后写入 persist.sesame.tb.* 属性）。
+ * 读不到（未打开淘宝/未同步）返回 null，UI 显示占位文案。
+ */
+private fun readTaobaoAccount(): TaobaoAccount? {
+    try {
+        val userId = sysProp("persist.sesame.tb.uid")?.takeIf { it.isNotEmpty() }
+        val nickname = sysProp("persist.sesame.tb.nick")?.takeIf { it.isNotEmpty() }
+        val label = sysProp("persist.sesame.tb.label")?.takeIf { it.isNotEmpty() }
+        if (userId == null && nickname == null && label == null) return null
+        // 副标题镜像支付宝：昵称非空显示「昵称」，否则显示 userId
+        val summary = if (nickname != null) nickname
+        else if (userId != null) "ID $userId"
+        else "淘宝农场"
+        return TaobaoAccount(label ?: "默认", summary)
+    } catch (e: Throwable) {
+        Log.printStackTrace(e)
+        return null
+    }
 }
 
 @Composable
@@ -807,15 +792,14 @@ fun ConfigTab(activity: MiuixMainActivity) {
     }
     Spacer(Modifier.height(12.dp))
 
-    // 淘宝账号：镜像支付宝——hook 拿到登录实例后把账号信息写到共享文件，这里读取并展示
+    // 淘宝账号：镜像支付宝——hook 拿到登录实例后把账号信息写入 SystemProperties，这里读取并展示
     val taobaoAccount = remember { readTaobaoAccount() }
-    val tbProbe = remember { if (taobaoAccount == null) probeCrossProcessRead() else "" }
     SmallTitle(text = "淘宝")
     CardColumn {
         ArrowPreference(
             title = if (taobaoAccount != null) taobaoAccount.label else "默认",
             summary = if (taobaoAccount != null) taobaoAccount.summary
-            else "未获取到登录账号，打开淘宝App后自动同步" + (if (tbProbe.isNotEmpty()) " [$tbProbe]" else ""),
+            else "未获取到登录账号，打开淘宝App后自动同步",
             onClick = {
                 context.startActivity(Intent(context, MiuixTaobaoSettingsActivity::class.java))
             }
