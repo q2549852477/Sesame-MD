@@ -815,7 +815,7 @@ fun ConfigTab(activity: MiuixMainActivity) {
         ArrowPreference(
             title = if (taobaoAccount != null) taobaoAccount.label else "默认",
             summary = if (taobaoAccount != null) taobaoAccount.summary
-            else "未获取到登录账号，打开淘宝App后自动同步" + (tbProbe.isNotEmpty() ? " [$tbProbe]" : ""),
+            else "未获取到登录账号，打开淘宝App后自动同步" + (if (tbProbe.isNotEmpty()) " [$tbProbe]" else ""),
             onClick = {
                 context.startActivity(Intent(context, MiuixTaobaoSettingsActivity::class.java))
             }
